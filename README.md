@@ -1,5 +1,7 @@
 # uniswap-weth-liquidity-adder
 
+A dapp that helps you add ETH to Uniswap's ETH-WETH exchange in one transaction.
+
 ## Demo
 
 It's deployed on Ethereum mainnet.
