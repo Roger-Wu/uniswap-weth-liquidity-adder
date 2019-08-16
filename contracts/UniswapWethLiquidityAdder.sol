@@ -4,8 +4,9 @@ import "./UniswapExchangeInterface.sol";
 import "./WETH9Interface.sol";
 
 /**
- * @title Uniswap V1 ETH-WETH Exchange Liquidity Adder
- * @dev Help adding ETH to Uniswap ETH-WETH exchange in one tx.
+ * @title Uniswap ETH-WETH Exchange Liquidity Adder
+ * @author Roger Wu (@Roger-Wu)
+ * @dev Help add ETH to Uniswap's ETH-WETH exchange in one transaction.
  * @notice Do not send WETH or UNI token to this contract.
  */
 contract UniswapWethLiquidityAdder {
@@ -17,67 +18,82 @@ contract UniswapWethLiquidityAdder {
     UniswapExchangeInterface uniswapWethExchange = UniswapExchangeInterface(uniswapWethExchangeAddress);
 
     constructor() public {
-        // approve Uniswap ETH-WETH Exchange to transfer WETH from this contract
-        weth.approve(uniswapWethExchangeAddress, 2**256 - 1);
+        // approve the exchange to transfer WETH from this contract
+        weth.approve(uniswapWethExchangeAddress, 2**256-1);
     }
 
     function () external payable {
         addLiquidity();
     }
 
-    // TODO: should this function return anything?
-    /// @dev Receive ETH, add to Uniswap ETH-WETH exchange, and return UNI token.
-    /// Will try to add all ETH in this contract to the liquidity pool.
-    /// There may be WETH token stuck in this contract?, but we don't care
-    function addLiquidity() public payable {
-        // If no ETH is received, revert.
-        // require(msg.value > 0);
+    /// @dev This function will
+    /// 1. receive ETH,
+    /// 2. fetch the price of WETH/ETH from Uniswap's ETH-WETH exchange,
+    /// 3. wrap part of the ETH to WETH (the amount is dependent on the price),
+    /// 4. add ETH and WETH to the exchange and get liquidity tokens,
+    /// 5. transfer the liquidity tokens to msg.sender.
+    /// notice: There may be a few weis stuck in this contract.
+    function addLiquidity() public payable returns (uint256 liquidity) {
+        // If no ETH is received, do nothing.
+        if (msg.value == 0) {
+            return 0;
+        }
 
-        // Get the amount of ETH now in this contract as the total amount of ETH we are going to add.
+        // Get the amount of ETH now in this contract.
         uint256 totalEth = address(this).balance;
 
-        // Get the amount of ETH and WETH in the liquidity pool.
-        uint256 ethInPool = uniswapWethExchangeAddress.balance;
-        uint256 wethInPool = weth.balanceOf(uniswapWethExchangeAddress);
+        // Compute the amount of ETH and WETH we will add to the pool.
+        uint256 ethToAdd;
+        uint256 wethToAdd;
+        if (uniswapWethExchange.totalSupply() == 0) {
+            // If no liquidity in the exchange, set ethToAdd:wethToAdd = 1:1.
+            wethToAdd = totalEth / 2;
+            ethToAdd = totalEth - wethToAdd;
+        } else {
+            // If there's liquidity in the exchange, set ethToAdd:wethToAdd = ethInPool:wethInPool.
 
-        // Calculate the amount of WETH we need to wrap.
-        // We are solving this:
-        //     Find maximum integer `ethToAdd` s.t.
-        //     ethToAdd + wethToAdd <= totalEth
-        //     wethToAdd = floor(ethToAdd * wethInPool / ethInPool) + 1
-        // Solution:
-        //     Let x = ethToAdd
-        //         A = wethInPool
-        //         B = ethInPool
-        //         C = totalEth
-        //     Then
-        //         x + floor(x * A / B) + 1 <= C
-        //         <=> x + x * A / B + 1 < C + 1
-        //         <=> x + x * A / B < C
-        //         <=> x < C * B / (A + B)
-        //         <=> max int x = ceil(C * B / (A + B)) - 1
-        //     So max `ethToAdd` is ceil(totalEth * ethInPool / (wethInPool + ethInPool)) - 1
-        // Notes:
-        //     1. In the following code, we set `ethToAdd = floor(C * B / (A + B)) - 1`
-        //         instead of `ethToAdd = ceil(C * B / (A + B)) - 1`
-        //         because it's cheaper to compute `floor` (just an integer division),
-        //         and the difference is at most 1 wei.
-        //     2. We don't use SafeMath here because it's almost impossible to overflow
-        //         when computing `ethBalance * ethBalance` or `ethBalance * wethBalance`
-        uint256 ethToAdd = totalEth * ethInPool / (wethInPool + ethInPool) - 1;
-        uint256 wethToAdd = ethToAdd * wethInPool / ethInPool + 1;
+            // Get the amount of ETH and WETH in the liquidity pool.
+            uint256 ethInPool = uniswapWethExchangeAddress.balance;
+            uint256 wethInPool = weth.balanceOf(uniswapWethExchangeAddress);
+
+            // Calculate the amount of WETH we need to wrap.
+            // We are solving this:
+            //     Find maximum integer `ethToAdd` s.t.
+            //     ethToAdd + wethToAdd <= totalEth
+            //     wethToAdd = floor(ethToAdd * wethInPool / ethInPool) + 1
+            // Solution:
+            //     Let x = ethToAdd
+            //         A = wethInPool
+            //         B = ethInPool
+            //         C = totalEth
+            //     Then
+            //         x + floor(x * A / B) + 1 <= C
+            //         <=> x + x * A / B + 1 < C + 1
+            //         <=> x + x * A / B < C
+            //         <=> x < C * B / (A + B)
+            //         <=> max int x = ceil(C * B / (A + B)) - 1
+            //     So max ethToAdd = ceil(totalEth * ethInPool / (wethInPool + ethInPool)) - 1
+            // Notes:
+            //     1. In the following code, we set `ethToAdd` to `floor(C * B / (A + B)) - 1`
+            //         instead of `ceil(C * B / (A + B)) - 1`
+            //         because it's cheaper to compute,
+            //         and the difference is at most 1 wei.
+            //     2. We don't use SafeMath here because it's almost impossible to overflow
+            //         when computing `ethBalance * ethBalance` or `ethBalance * wethBalance`.
+            //         This saves some gas.
+            ethToAdd = totalEth * ethInPool / (wethInPool + ethInPool) - 1;
+            wethToAdd = ethToAdd * wethInPool / ethInPool + 1;
+        }
 
         // Wrap ETH.
         weth.deposit.value(wethToAdd)();
-        // require(weth.balanceOf(address(this)) == wethToAdd);
 
         // Add liquidity.
         uint256 liquidityMinted = uniswapWethExchange.addLiquidity.value(ethToAdd)(1, 2**256-1, 2**256-1);
-        // require(liquidityMinted > 0);
 
         // Transfer liquidity token to msg.sender.
-        // uint256 liquidityTokenBalance = uniswapWethExchange.balanceOf(msg.sender);
-        uniswapWethExchange.transfer(msg.sender, liquidityMinted);
-        // require(uniswapWethExchange.transfer(msg.sender, liquidityMinted));
+        require(uniswapWethExchange.transfer(msg.sender, liquidityMinted));
+
+        return liquidityMinted;
     }
 }
