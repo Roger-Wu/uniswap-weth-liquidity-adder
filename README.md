@@ -8,7 +8,7 @@ It's deployed on Ethereum mainnet.
 
 You can view the verified code and interact with it on EtherScan.
 
-https://etherscan.io/address/0x5cdf390249e908b637e6915b4c698b1e7481c6e2#code
+https://etherscan.io/address/0xcdac39c49715f1caf3d36d3ccd9d8f7c9f7af91f#code
 
 ## Getting Started
 
