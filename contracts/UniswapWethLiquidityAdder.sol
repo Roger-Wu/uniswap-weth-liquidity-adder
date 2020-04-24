@@ -81,7 +81,7 @@ contract UniswapWethLiquidityAdder {
             //        when computing `ethBalance * ethBalance` and `ethBalance * wethBalance`
             //        because the amount of ETH and WETH are much less than 2**128.
             //        It saves some gas not using SafeMath.
-            uint256 sum = wethInPool + ethInPool
+            uint256 sum = wethInPool + ethInPool;
             ethToAdd = (totalEth * ethInPool + sum - 1) / sum - 1;
             wethToAdd = ethToAdd * wethInPool / ethInPool + 1;
         }
