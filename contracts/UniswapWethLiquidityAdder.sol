@@ -57,6 +57,8 @@ contract UniswapWethLiquidityAdder {
             uint256 wethInPool = weth.balanceOf(uniswapWethExchangeAddress);
 
             // Calculate the amount of WETH we need to wrap.
+            // ('/' stands for a normal division,
+            //  and '\' stands for a integer division in the comments)
             // We are solving this:
             //     Find maximum integer `ethToAdd` s.t.
             //     ethToAdd + wethToAdd <= totalEth
@@ -74,14 +76,13 @@ contract UniswapWethLiquidityAdder {
             //         <=> max int x = ceil(C * B / (A + B)) - 1
             //     So max ethToAdd = ceil(totalEth * ethInPool / (wethInPool + ethInPool)) - 1
             // Notes:
-            //     1. In the following code, we set `ethToAdd` to `floor(C * B / (A + B)) - 1`
-            //         instead of `ceil(C * B / (A + B)) - 1`
-            //         because it's cheaper to compute,
-            //         and the difference is at most 1 wei.
+            //     1. ceil(a / b) = (a + b - 1) \ b
             //     2. We don't use SafeMath here because it's almost impossible to overflow
-            //         when computing `ethBalance * ethBalance` or `ethBalance * wethBalance`.
-            //         This saves some gas.
-            ethToAdd = totalEth * ethInPool / (wethInPool + ethInPool) - 1;
+            //        when computing `ethBalance * ethBalance` and `ethBalance * wethBalance`
+            //        because the amount of ETH and WETH are much less than 2**128.
+            //        It saves some gas not using SafeMath.
+            uint256 sum = wethInPool + ethInPool
+            ethToAdd = (totalEth * ethInPool + sum - 1) / sum - 1;
             wethToAdd = ethToAdd * wethInPool / ethInPool + 1;
         }
 
