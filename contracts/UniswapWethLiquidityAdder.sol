@@ -42,54 +42,57 @@ contract UniswapWethLiquidityAdder {
         // Get the amount of ETH now in this contract.
         uint256 totalEth = address(this).balance;
 
+        // Get the amount of ETH and WETH in the liquidity pool.
+        uint256 ethInPool = uniswapWethExchangeAddress.balance;
+        uint256 wethInPool = weth.balanceOf(uniswapWethExchangeAddress);
+        uint256 sumEthWethInPool = ethInPool + wethInPool; // should never overflow
+
         // Compute the amount of ETH and WETH we will add to the pool.
         uint256 ethToAdd;
         uint256 wethToAdd;
-        if (uniswapWethExchange.totalSupply() == 0) {
+        if (sumEthWethInPool == 0) {
             // If no liquidity in the exchange, set ethToAdd:wethToAdd = 1:1.
             wethToAdd = totalEth / 2;
             ethToAdd = totalEth - wethToAdd;
         } else {
             // If there's liquidity in the exchange, set ethToAdd:wethToAdd = ethInPool:wethInPool.
 
-            // Get the amount of ETH and WETH in the liquidity pool.
-            uint256 ethInPool = uniswapWethExchangeAddress.balance;
-            uint256 wethInPool = weth.balanceOf(uniswapWethExchangeAddress);
-
-            // Calculate the amount of WETH we need to wrap.
-            // ('/' stands for a normal division,
-            //  and '\' stands for a integer division in the comments)
-            // We are solving this:
-            //     Find maximum integer `ethToAdd` s.t.
-            //     ethToAdd + wethToAdd <= totalEth
-            //     wethToAdd = floor(ethToAdd * wethInPool / ethInPool) + 1
+            // Problem:
+            //     What's the maximum value of ETH and WETH we can add to the pool?
+            // Notice:
+            //     In the following comments, '/' stands for a normal division, not an integer division.
             // Solution:
+            //     Let `ethToAdd` be the amount of weis we are adding to the pool.
+            //     Then we are actually solving this:
+            //         Find maximum non-negative integer `ethToAdd` s.t.
+            //         ethToAdd + wethToAdd <= totalEth
+            //         wethToAdd = floor(ethToAdd * wethInPool / ethInPool) + 1    (from Uniswap's contract)
             //     Let x = ethToAdd
             //         A = wethInPool
             //         B = ethInPool
             //         C = totalEth
             //     Then
-            //         x + floor(x * A / B) + 1 <= C
-            //         <=> x + x * A / B + 1 < C + 1
-            //         <=> x + x * A / B < C
-            //         <=> x < C * B / (A + B)
-            //         <=> max int x = ceil(C * B / (A + B)) - 1
+            //            x + floor(x * A / B) + 1 <= C
+            //         => floor(x * A / B) <= C - x - 1
+            //         => x * A / B < C - x - 1 + 1
+            //         => x + x * A / B < C
+            //         => x < C * B / (A + B)
+            //         => max int x = ceil(C * B / (A + B)) - 1
             //     So max ethToAdd = ceil(totalEth * ethInPool / (wethInPool + ethInPool)) - 1
             // Notes:
-            //     1. ceil(a / b) = (a + b - 1) \ b
+            //     1. ceil(a / b) = floor((a + b - 1) / b) if a, b are integers.
             //     2. We don't use SafeMath here because it's almost impossible to overflow
             //        when computing `ethBalance * ethBalance` and `ethBalance * wethBalance`
-            //        because the amount of ETH and WETH are much less than 2**128.
+            //        because the amount of ETH and WETH should be much less than 2**128.
             //        It saves some gas not using SafeMath.
-            uint256 sum = wethInPool + ethInPool;
-            ethToAdd = (totalEth * ethInPool + sum - 1) / sum - 1;
+            ethToAdd = (totalEth * ethInPool + sumEthWethInPool - 1) / sumEthWethInPool - 1;
             wethToAdd = ethToAdd * wethInPool / ethInPool + 1;
         }
 
         // Wrap ETH.
         weth.deposit.value(wethToAdd)();
 
-        // Add liquidity.
+        // Add liquidity to ETH-WETH pool.
         uint256 liquidityMinted = uniswapWethExchange.addLiquidity.value(ethToAdd)(1, 2**256-1, 2**256-1);
 
         // Transfer liquidity token to msg.sender.
